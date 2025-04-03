@@ -44,6 +44,6 @@ O projeto contém os seguintes arquivos:
   uvicorn servidor:app --host 0.0.0.0 --port 8000 --reload
   ```
 
-## Autor
+## Rafael Moura
 Desenvolvido para controle remoto de LEDs via Raspberry Pi e comunicação em tempo real com WebSockets.
 
