@@ -5,8 +5,8 @@ import random
 import threading
 import time
 
-# Definindo os pinos de LED
-led_pins = [2, 3, 4, 17, 27, 22, 10, 9, 11, 5]
+# Definindo os pinos de LED (10 pinos)
+led_pins = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 # Configurações do GPIO
 GPIO.setwarnings(False)
@@ -14,7 +14,7 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(led_pins, GPIO.OUT)
 
 # Variável global para armazenar a sequência de LEDs
-led_sequencia = "0000000000"
+led_sequencia = "0000000000"  # Sequência inicial para 10 LEDs
 
 # Instância do FastAPI
 app = FastAPI()
@@ -34,7 +34,7 @@ def atualiza(sequencia):
 def aleatorio():
     global led_sequencia
     while True:
-        sequencia_ale = ''.join(random.choice("01") for _ in range(10))
+        sequencia_ale = ''.join(random.choice("01") for _ in range(10))  # Gerando sequência de 10 bits
         atualiza(sequencia_ale)
         print(f"Nova sequência gerada: {sequencia_ale}")
         time.sleep(30)
@@ -51,5 +51,8 @@ async def get_leds():
 # Rota POST para atualizar a sequência de LEDs
 @app.post("/leds")
 async def set_leds(sequencia: LEDsequencia):
-    atualiza(sequencia.sequencia)
-    return {"mensagem": "Sequência de LEDs atualizada!", "sequencia": led_sequencia}
+    if len(sequencia.sequencia) == 10 and all(bit in "01" for bit in sequencia.sequencia):
+        atualiza(sequencia.sequencia)
+        return {"mensagem": "Sequência de LEDs atualizada!", "sequencia": led_sequencia}
+    else:
+        return {"erro": "A sequência deve ter exatamente 10 bits contendo apenas 0s e 1s."}
