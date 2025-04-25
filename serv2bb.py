@@ -5,63 +5,97 @@ import threading
 import asyncio
 import RPi.GPIO as GPIO
 
+# ========================================
+# Função para solicitar pinos do usuário
+# ========================================
+def obter_pinos_gpio():
+    """
+    Solicita ao usuário que informe 2 pinos GPIO separados por vírgula.
+    """
+    entrada = input("Digite os 2 pinos GPIO que você usará para os LEDs, separados por vírgula (ex: 5,11): ")
+    try:
+        pinos = [int(p.strip()) for p in entrada.split(",")]
+        if len(pinos) != 2:
+            raise ValueError("Você deve informar exatamente 2 pinos.")
+        return pinos
+    except Exception as e:
+        print("Erro na entrada dos pinos:", e)
+        exit(1)
+
+# ========================================
+# Inicialização
+# ========================================
 app = FastAPI()
-active_connections = []  # Lista para armazenar os clientes conectados
+conexoes_ativas = []  # Lista de conexões WebSocket ativas
 
-# Defina os pinos de LED
-led_pins = [5, 11]
+pinos_led = obter_pinos_gpio()  # Obtém os pinos definidos pelo usuário
 
-# Configura o GPIO da Raspberry Pi
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(led_pins, GPIO.OUT)
+GPIO.setup(pinos_led, GPIO.OUT)
 
-led_sequencia = "00"  # Sequência inicial
+sequencia_led = "00"  # Estado inicial dos LEDs
 
-# Função para atualizar os LEDs na Raspberry Pi
-def atualiza_leds(sequencia):
-    global led_sequencia
-    led_sequencia = sequencia
+# ========================================
+# Função para atualizar os LEDs
+# ========================================
+def atualizar_leds(sequencia):
+    """
+    Atualiza os dois LEDs com base na sequência fornecida.
+    """
+    global sequencia_led
+    sequencia_led = sequencia
     for i, bit in enumerate(sequencia):
-        GPIO.output(led_pins[i], GPIO.HIGH if bit == '1' else GPIO.LOW)
+        GPIO.output(pinos_led[i], GPIO.HIGH if bit == '1' else GPIO.LOW)
     print(f"Sequência de LEDs atualizada: {sequencia}")
 
-# Função para enviar a sequência de LEDs para todos os clientes conectados
-async def env_led_sequencia():
-    for connection in active_connections:
-        await connection.send_text(f"Nova sequência de LEDs: {led_sequencia}")
+# ========================================
+# Enviar sequência para todos os clientes
+# ========================================
+async def enviar_sequencia_para_clientes():
+    """
+    Envia a sequência atual para todos os clientes conectados via WebSocket.
+    """
+    for conexao in conexoes_ativas:
+        await conexao.send_text(f"Nova sequência de LEDs: {sequencia_led}")
 
-# Função que gera uma nova sequência aleatória a cada 30 segundos
-def aleatorio():
-    global led_sequencia
+# ========================================
+# Geração de sequência aleatória
+# ========================================
+def gerar_sequencia_aleatoria():
+    """
+    Gera uma nova sequência de 2 bits aleatoriamente a cada 30 segundos
+    e envia para os clientes conectados.
+    """
+    global sequencia_led
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     while True:
-        led_sequencia = ''.join(random.choice("01") for _ in range(2))  # Sequência de 2 LEDs
-        print(f"Nova sequência gerada: {led_sequencia}")
-        atualiza_leds(led_sequencia)  # Atualiza a sequência de LEDs
-        loop.run_until_complete(env_led_sequencia())  # Envia para os clientes
+        nova_sequencia = ''.join(random.choice("01") for _ in range(2))
+        atualizar_leds(nova_sequencia)
+        loop.run_until_complete(enviar_sequencia_para_clientes())
         time.sleep(30)
 
-# Inicia a thread que gera a sequência aleatória
-thread = threading.Thread(target=aleatorio, daemon=True)
+# Inicia thread de geração aleatória
+thread = threading.Thread(target=gerar_sequencia_aleatoria, daemon=True)
 thread.start()
 
+# ========================================
+# WebSocket Endpoint
+# ========================================
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    Lida com a conexão WebSocket do cliente, recebendo comandos e enviando atualizações.
+    """
     await websocket.accept()
-    active_connections.append(websocket)
+    conexoes_ativas.append(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            print(f"Mensagem recebida do cliente: {data}")
-            # Atualiza a sequência de LEDs com a mensagem recebida
-            atualiza_leds(data)
-            # Envia a nova sequência de LEDs para todos os clientes
-            await env_led_sequencia()
+            mensagem = await websocket.receive_text()
+            print(f"Mensagem recebida do cliente: {mensagem}")
+            atualizar_leds(mensagem)
+            await enviar_sequencia_para_clientes()
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
-
-
-
+        conexoes_ativas.remove(websocket)
